@@ -1,0 +1,60 @@
+name: Push-to-EC2
+
+# Trigger deployment only on push to the main branch
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to EC2 on main branch push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the files
+        uses: actions/checkout@v2
+
+      - name: Deploy to Server 1
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.HOST_DNS }}
+          REMOTE_USER: ${{ secrets.USERNAME }}
+          TARGET: ${{ secrets.TARGET_DIR }}
+
+      - name: Executing remote ssh commands using ssh key
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST_DNS }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Update and install required packages
+            sudo apt-get -y update
+            sudo apt-get install -y curl
+
+            # Install Node.js 16
+            curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+
+            # Verify Node.js and npm installation
+            node -v
+            npm -v
+
+            # Navigate to the target directory
+            cd ${{ secrets.TARGET_DIR }}
+
+            # Install project dependencies
+            npm install
+
+            # Install pm2 process manager if not installed
+            sudo npm install -g pm2
+
+            # Stop any previous running app and start the new one
+            pm2 stop all || true
+            pm2 start npm --name "app-name" -- run start
+
+            # Ensure pm2 starts on boot
+            pm2 startup
+            pm2 save
